@@ -1,0 +1,127 @@
+---
+title: "Best MPG by transmission type"
+author: "Alejandro Borges Sanchez"
+date: "7/12/2021"
+header-includes:
+  - \usepackage{mathtools}
+  - \usepackage{fontspec}
+  - \setmainfont{Arial}
+fontsize: 10pt
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+  html_notebook: default
+editor_options:
+  markdown:
+    wrap: 80
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	fig.width = 4,
+	fig.height = 2
+)
+library(tidyverse)
+library(DataExplorer)
+library(DT)
+data("mtcars")
+library(GGally)
+thecars<-mtcars%>%
+    rename(transmission=am)%>%
+    mutate(transmission=if_else(transmission==0,"A","M"),
+           transmission=as_factor(transmission))%>%
+  as_tibble(rownames = "Model")
+ggplot2::theme_set(ggthemes::theme_solarized_2())
+```
+
+# The data
+The editors have been kind enough to send us a wonderful dataset from the latest cars in the known universe (1973-1974), wich will allow us to see, FINALLY, which transmission type is better for our wallet!
+
+You can see it in all its glory bellow:
+```{r carstable}
+thecars%>%head()
+```
+
+Now that is a lot of variables. We need to see how good (or bad), do those correlate with each other.
+```{r pairwise, echo=FALSE, fig.height=6, fig.width=8}
+
+ggpairs(data = thecars%>%select(-Model),
+        ggplot2::aes(colour=transmission),
+        upper=list(continuous=wrap("cor",size=2)),
+        diag=list(continuous=wrap("diagAxis",labelSize=2,gridLabelSize=2))
+        )+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 0))
+```
+
+So there we can see a lot of correlated variables. So, what might be interesting here? For one, most of the variable exhibit some sort of correlation, ranging from weak to strong, to Miles per Gallon.
+
+In modeling, lets consider what it is we want to answer. One way would be to attempt
+to use mpg as the output variables and see if transmission type changes the average
+mpg value. That is the easy way. But I am no man for easy ways...
+
+I think we can do a bernoulli fit where the transmission is the output binary variable
+and we can see how much does an increase or decrease of mpg influence the probability
+that a car has automatic or manual transmission. 
+
+Remember then that, in this model, Manual is coded as 1 and Automatic is coded as zero.
+Additionally, mpg as a covariate must be centered so that we might have a chance to interpret the intercept as the probability for the cars with mean mpg to have a manual transmission.
+
+```{r}
+simplefit_binom_centered_mpg<-glm(formula = transmission ~ mpg, family = "binomial", 
+                                  data = thecars%>%mutate(mpg=mpg-mean(mpg))
+                                  )
+tibble(x=thecars$mpg,y=fitted.values(simplefit))%>%
+ggplot(aes(x=x,y=y))+
+    geom_line()+
+    geom_point(data=tibble(mtcars,transmission=thecars$transmission),aes(x=mpg,y=am,color=transmission))
+```
+Remember that Y is in the logit scale. We can see that our fitted model captures
+a basic idea: if you increase mpg, the log odds of the cars having a manual transmission
+decreases. We will transform this to the probability scale ($$p_i=exp(\beta_0+\beta_1)/(1+exp(\beta_0+\beta_1))$$) and remove the points:
+
+```{r}
+tibble(x=thecars$mpg,y=exp(fitted.values(simplefit)+0.435)/(1+exp(fitted.values(simplefit)+0.435)))%>%
+    ggplot(aes(x=x,y=y))+
+    geom_line()
+```
+Our model is saying then that for lower miles per gallon, the probability of a car
+having a manual transmission is much higher than for higher miles per gallon.
+
+Now we can dance around this all we want, but it means squat if we dont check our
+assumptions and verify:
+
+- Included coefficients (variables) are significant. For now, only mpg.
+- We havent excluded relevant coefficients that might change signifficance of mpg
+
+I mean, what if really mpg has nothing to do with the transmission and we are missing 
+an effect that is in another variable (and plenty of them have correlation to both mpg and transmission type). 
+
+From the book: Omitting variables results in bias in the coefficients of interest - unless the regressors are uncorrelated with the omitted ones.
+
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
