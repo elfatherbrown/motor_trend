@@ -167,7 +167,6 @@ summarizing and modeling, check the code out: its really cool in a tidy way):
 
 lm(mpg~transmission,thecars)%>%
   tidy(conf.int=TRUE)%>% #This comes from help("tidy.lm")
-  
   knitr::kable()
 ```
 
@@ -368,7 +367,7 @@ different mpg, save for the cadillac and the lincoln.... hum...
 Also, three mercs 450 have (almost?) the exact same hp, but very different mpg.
 
 So thinking about this I thought: what about the weight. I mean I remember
-cadillacs and licolns: those were big big cars (mtcars data set comes from the
+cadillacs and lincolns: those were big big cars (mtcars data set comes from the
 70s). So maybe the interaction of hp with weight or...something... but we have
 been warned in the course that interactions are dangerous: we should very well
 prove that use of interaction terms is warranted.

@@ -1,0 +1,268 @@
+---
+title: "Motor Trends mtcars analysis"
+author: "Alejandro Borges Sanchez"
+date: "7/12/2021"
+header-includes:
+  - \usepackage{mathtools}
+  - \usepackage{fontspec}
+  - \setmainfont{Arial}
+fontsize: 10pt
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+  html_notebook: default
+editor_options:
+  markdown:
+    wrap: 80
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	fig.width = 6,
+	fig.height = 6
+)
+library(tidyverse)
+library(DataExplorer)
+library(DT)
+data("mtcars")
+library(GGally)
+library(ggfortify)
+library(magrittr)
+library(broom)
+thecars<-mtcars%>%
+    rename(transmission=am)%>%
+    mutate(transmission=if_else(transmission==0,"A","M"),
+           transmission=as_factor(transmission),
+           wt=wt*1000,
+           vs=if_else(vs==0,"V","S"),
+           p2w=hp/wt,#I converted wt to pounds back at the beginning: yields hp/lb
+         power_loading=1/p2w, #the inverse of power to weight is easyer to think about, the bigger, the heavyer and/or less hp, the smaller, the lighter and/or more powerful
+         power_loading=power_loading-mean(power_loading))%>% #Better if centered)
+  as_tibble(rownames = "Model")
+ggplot2::theme_set(ggplot2::theme_classic())
+```
+
+# Executive Summary
+
+A list of 32 cars have been submitted to me for examination of the relationship
+between Miles Per Gallon and the transmission type. I am asked:
+
+-   Is automatic transmission better than manual transmission?
+-   Can we quantify this difference?
+
+A set of models where attempted on the data set taking account each and all
+variables. Each variable was explored in-depth both as mathematical quantities
+and as physics aspects of a car design, including its engine, gasoline
+displacement and other aspects, not explicitly included in the original dataset,
+such as power-to-weight ratio, were calculated and explored.
+
+Power loading is the most important variable of this result, so its important to
+define it explicitly:
+
+$$
+w2p=power\_loading=Weight/HorsePower
+$$
+
+Refer to the variable table in de appendix for further information this and
+other measures.
+
+## Preliminary analysis
+
+The first attempt is to compare the difference in the average cars in both
+manual and automatic cars, assuming this dataset represents the whole car
+industry, that is, this sample of 32 cars is randomly selected and sufficiently
+large, these are the results:
+
+-   Cars with manual tranmission range in consumption from 21.6 to 27.16 miles
+    per gallon while the average automatic transmission car ranges from 10.8 to
+    23.5 miles per gallon, with 95% confidence.
+-   As for the "can we quantify this", the answer is partially yes: most
+    automatic and manual cars lie within that range, but its obvious that some
+    automatic cars give more miles per gallon than manual cars and viceversa:
+    some manual cars give less miles per gallon than some automatic cars.
+    Speciffically, in this dataset, this cars are:
+
+```{r fig.cap="This comes from the basic linear model where lm(mpg~transmission)"}
+thecars%>%
+  mutate(row_number=row_number())%>%
+  filter(between(mpg,21.6,23.6))%>%
+  select(row_number,Model,mpg,transmission,power_loading,carb)%>%
+  knitr::kable()
+```
+
+Which you can immediatly see give exactly the same MPG, but are of auto and
+manual transmissions. If these two cars represent whole classes of cars in the
+market, then its possible that attempting to explain MPG only by transmission is
+misguided. A full exploration of the many possible other variables in the
+dataset that might help explain MPG additionally to transmission is available in
+the appendix. Here, I list only the final conclussion:
+
+## Conclusion 
+
+After a length exploration of the data and several models, I arrived at this
+conclusion:
+
+-   Many factors other than transmission affect MPG. It is a more complex
+    question than what one would think.
+
+-   The main factor I included is the weight-to-power ratio, also called the
+    power loading, which divides the car's weight in pounds over the cars horse
+    powers.
+
+-   Therefore, taking into account the power loading and the transmission type,
+    I have 95% confidence that:
+
+    -   Manual cars:
+
+        -   The average power loading manual transmission car will travel 22.7
+            to 27.2 miles per gallon.
+
+    -   Automatic cars:
+
+        -   The average power loading automatic transmission car will travel
+            11.5 to 21.9 miles per gallon.
+
+This does not tell the whole story. For each 1 unit of
+$$w2p=power\_loading=Weight/HorsePower$$ ratio that the car goes over the
+average power loading, any of this cars will travel from 0.2 to 0.57 additional
+miles per gallon spent.
+
+This might seem anti climatic for a magazzine, but please refer to the figures
+in the appendix for a suggestion on how to publish this results. Cars can be
+classified as better or worse in power loading and that position of the cars
+with respect to power loading and mpg is what tells the rest of the story.
+
+Due to this document's size constraint, I cannot put here all the exploration
+necessary. Please refer to the github repo for [all the glorious
+analysis](https://github.com/elfatherbrown/motor_trend) you might wish to see.
+
+Suffice it to say that ANOVA suggests power loading is a great variable to
+include and it doesnt have much impact in variance inflation:
+
+```{r}
+fit0<-lm(mpg~transmission,thecars)
+fit1<-lm(mpg~transmission+power_loading,thecars)
+print("ANOVA")
+anova(fit0,fit1)
+print("Variance Inflation Factor")
+car::vif(fit1)
+```
+
+## Appendix
+
+```{r fig.cap="How i would explain this results to people: cuadrantize both groups by mean mpg and mean power loading"}
+
+meanmpgs<-thecars%>%
+group_by(transmission)%>%
+summarize(mean_mpg=mean(mpg),
+          mean_power_loading=mean(1/p2w)
+)
+
+thecars%>%
+ggplot(aes(x=1/p2w,y=mpg,label=Model))+
+geom_point()+
+ggrepel::geom_label_repel(size=2)+
+geom_vline(data=meanmpgs,aes(xintercept=mean_power_loading))+
+geom_hline(data=meanmpgs,aes(yintercept=mean_mpg))+
+facet_wrap(transmission~.)
+
+```
+
+### Other explorations
+
+```{r fig.height=6, fig.width=8, message=FALSE, warning=FALSE}
+
+ggpairs(data = thecars%>%select(-Model),
+        ggplot2::aes(colour=transmission),
+        upper=list(continuous=wrap("cor",size=2)),
+        diag=list(continuous=wrap("diagAxis",labelSize=2,gridLabelSize=2))
+        )+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 0))
+
+
+```
+
++---------+-----------------------+--------------------------+-----------+---------------+
+| Var     | Doc                   | Note                     | Source    | f(?)          |
++=========+=======================+==========================+===========+===============+
+| mpg     | M iles/(US) gallon    |                          |           |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| cyl     | Number of cylinders   |                          |           |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| disp    | Dis placement         | How much gas/air mix     | \<https   | f(cyl,volcyl  |
+|         | (cu.in.)              | passes through the       | ://       | )=cyl\*VolCyl |
+|         |                       | cylinders in total       | www.yourm |               |
+|         |                       |                          | ech       |               |
+|         |                       |                          | anic.com/ |               |
+|         |                       |                          | art       |               |
+|         |                       |                          | icle/what |               |
+|         |                       |                          | -is       |               |
+|         |                       |                          | -engine-d |               |
+|         |                       |                          | ispl      |               |
+|         |                       |                          | acement\> |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| hp      | Gross h orsepower     |                          | \<<h      | f(Torque,     |
+|         |                       |                          | ttps://w> | RPM)=T\*RPM+e |
+|         |                       |                          | ww.       |               |
+|         |                       |                          | wikihow.c |               |
+|         |                       |                          | om/       |               |
+|         |                       |                          | Calculate |               |
+|         |                       |                          | -Hor      |               |
+|         |                       |                          | sepower\> |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| drat    | Rear axle ratio       | Motor revs/rear axle     | \<        | f(RPMaxlefron |
+|         |                       | revs ( kind of a measure | <https:/> | t,RPMaxleback |
+|         |                       | of efficiency )          | /ww       | )=RPMaxelfron |
+|         |                       |                          | w.autolis | t/RPMaxleback |
+|         |                       |                          | t.c       |               |
+|         |                       |                          | om/guides |               |
+|         |                       |                          | /axl      |               |
+|         |                       |                          | e-ratio\> |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| wt      | Weight (1000 lbs)     |                          |           | f(car)        |
++---------+-----------------------+--------------------------+-----------+---------------+
+| qsec    | 1/4 mile time         |                          |           |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| vs      | Engine (0             | V: classic, can have     | \<ht      | f(cyl)        |
+|         |                       | more cylinders,          | tp:       |               |
+|         | V-shaped, 1 =         | Straight: more           | //www.why |               |
+|         | straight)             | efficient, normally less | hig       |               |
+|         |                       | cylinders                | hend.com/ |               |
+|         |                       |                          | inl       |               |
+|         |                       |                          | ine-vs-v- |               |
+|         |                       |                          | engi      |               |
+|         |                       |                          | ne.html\> |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| am      | Tra nsmission (0 = a  |                          |           |               |
+|         | utomatic, 1 = manual) |                          |           |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| gear    | Number of forward     |                          |           |               |
+|         | gears                 |                          |           |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| carb    | Number of ca          |                          |           |               |
+|         | rburetors             |                          |           |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| p2w     | hp/(wt\*1000)         |                          |           |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+| power_  | 1/p2w-(mean(1/p2w))   | [https://en              |           |               |
+| loading |                       | .wikipedia.org/wiki/Powe |           |               |
+|         |                       | r-to-weight_ratio](https |           |               |
+|         |                       | ://en.wikipedia.org/wiki |           |               |
+|         |                       | /Power-to-weight_ratio)) |           |               |
++---------+-----------------------+--------------------------+-----------+---------------+
+
+: The variables themselves, with research links
+
+```{r fig.cap="Model:lm(mpg~transmission,thecars)"}
+lm(mpg~transmission,thecars)%>%autoplot()
+```
+
+```{r fig.cap="Model:lm(mpg~transmission+power_loading,thecars)"}
+lm(mpg~transmission+power_loading,thecars)%>%autoplot()
+```
