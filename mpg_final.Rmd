@@ -1,0 +1,508 @@
+---
+title: "Regression Models, final work"
+author: "Alejandro Borges Sanchez"
+date: "7/12/2021"
+header-includes:
+  - \usepackage{mathtools}
+  - \usepackage{fontspec}
+  - \setmainfont{Arial}
+fontsize: 10pt
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+  html_notebook: default
+editor_options:
+  markdown:
+    wrap: 80
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	fig.width = 6,
+	fig.height = 6
+)
+library(tidyverse)
+library(DataExplorer)
+library(DT)
+data("mtcars")
+library(GGally)
+library(ggfortify)
+library(magrittr)
+library(broom)
+thecars<-mtcars%>%
+    rename(transmission=am)%>%
+    mutate(transmission=if_else(transmission==0,"A","M"),
+           transmission=as_factor(transmission),
+           wt=wt*1000,
+           vs=if_else(vs==0,"V","S"))%>%
+  as_tibble(rownames = "Model")
+ggplot2::theme_set(ggplot2::theme_classic())
+```
+
+## Context
+
+Its a journalistic endevour. We are to provide visualizations and insightful
+figures with statistically sound intervals on data that might explain MPG by a
+number of variables.
+
+## The questions
+
+-   "Is an automatic or manual transmission better for MPG"
+-   "Quantify the MPG difference between automatic and manual transmissions"
+
+## The data
+
+32 cars from the mtcars dataset. I used that one because I think its what the
+course wants us to address on purpose: it is too small for any real inference,
+all the cars are old and a lot of confounders are just not included (city mpg is
+not the same as highway mpg, for one). The mpg dataset (type help("mpg") to see
+it), from the ggplot2 package, has much more comprehensive and modern data.
+
+Having said that, car efficiency was not on my mind before attacking this
+problem It has taken me all week to reach the conclussion I have arrived to
+because, hell I knew nothing about cars and how they work. I now know a heck of
+a lot more. What follows is my "research" table of what each variable means and
+how I think they relate to each other. It really (really) helped:
+
++---------+-----------+--------------------------+--------------+---------------+
+| Var     | Doc       | Note                     | Source       | f(?)          |
++=========+===========+==========================+==============+===============+
+| mpg     | M         |                          |              |               |
+|         | iles/(US) |                          |              |               |
+|         | gallon    |                          |              |               |
++---------+-----------+--------------------------+--------------+---------------+
+| cyl     | Number of |                          |              |               |
+|         | cylinders |                          |              |               |
++---------+-----------+--------------------------+--------------+---------------+
+| disp    | Dis       | How much gas/air mix     | <https       | f(cyl,volcyl  |
+|         | placement | passes through the       | ://www.yourm | )=cyl\*VolCyl |
+|         | (cu.in.)  | cylinders in total       | echanic.com/ |               |
+|         |           |                          | article/what |               |
+|         |           |                          | -is-engine-d |               |
+|         |           |                          | isplacement> |               |
++---------+-----------+--------------------------+--------------+---------------+
+| hp      | Gross     |                          | <https://w   | f(Torque,     |
+|         | h         |                          | ww.wikihow.c | RPM)=T\*RPM+e |
+|         | orsepower |                          | om/Calculate |               |
+|         |           |                          | -Horsepower> |               |
++---------+-----------+--------------------------+--------------+---------------+
+| drat    | Rear axle | Motor revs/rear axle     | <https:/     | f(RPMaxlefron |
+|         | ratio     | revs ( kind of a measure | /www.autolis | t,RPMaxleback |
+|         |           | of efficiency )          | t.com/guides | )=RPMaxelfron |
+|         |           |                          | /axle-ratio> | t/RPMaxleback |
++---------+-----------+--------------------------+--------------+---------------+
+| wt      | Weight    |                          |              | f(car)        |
+|         | (1000     |                          |              |               |
+|         | lbs)      |                          |              |               |
++---------+-----------+--------------------------+--------------+---------------+
+| qsec    | 1/4 mile  |                          |              |               |
+|         | time      |                          |              |               |
++---------+-----------+--------------------------+--------------+---------------+
+| vs      | Engine (0 | V: classic, can have     | <ht          | f(cyl)        |
+|         | =         | more cylinders,          | tp://www.why |               |
+|         | V-shaped, | Straight: more           | highend.com/ |               |
+|         | 1 =       | efficient, normally less | inline-vs-v- |               |
+|         | straight) | cylinders                | engine.html> |               |
++---------+-----------+--------------------------+--------------+---------------+
+| am      | Tra       |                          |              |               |
+|         | nsmission |                          |              |               |
+|         | (0 =      |                          |              |               |
+|         | a         |                          |              |               |
+|         | utomatic, |                          |              |               |
+|         | 1 =       |                          |              |               |
+|         | manual)   |                          |              |               |
++---------+-----------+--------------------------+--------------+---------------+
+| gear    | Number of |                          |              |               |
+|         | forward   |                          |              |               |
+|         | gears     |                          |              |               |
++---------+-----------+--------------------------+--------------+---------------+
+| carb    | Number of |                          |              |               |
+|         | ca        |                          |              |               |
+|         | rburetors |                          |              |               |
++---------+-----------+--------------------------+--------------+---------------+
+|         |           |                          |              |               |
++---------+-----------+--------------------------+--------------+---------------+
+| TORQUE  |           |                          |              | F(forc        |
+|         |           |                          |              | e,distance)=F |
+|         |           |                          |              | (disp,drat)+e |
++---------+-----------+--------------------------+--------------+---------------+
+
+## The way to the answer
+
+We can address this problem with a linear regression model that has mpg as the
+dependent and at least the transmission (automatic or manual) as the
+independent.
+
+The reference for all our work is still just a SPLOM, where we can see at a
+glance correlations between all variables and the independent variable, mpg:
+
+```{r echo=FALSE, fig.height=6, fig.width=8}
+
+ggpairs(data = thecars%>%select(-Model),
+        ggplot2::aes(colour=transmission),
+        upper=list(continuous=wrap("cor",size=2)),
+        diag=list(continuous=wrap("diagAxis",labelSize=2,gridLabelSize=2))
+        )+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 0))
+```
+
+So the base relationship and linear model would look like this:
+
+```{r}
+thecars%>%
+  ggplot(aes(x=transmission,y=mpg,fill=transmission))+
+  geom_violin()
+```
+
+The basic linear model would look like this (I use the broom package for
+summarizing and modeling, check the code out: its really cool in a tidy way):
+
+```{r}
+
+lm(mpg~transmission,thecars)%>%
+  tidy(conf.int=TRUE)%>% #This comes from help("tidy.lm")
+  
+  knitr::kable()
+```
+
+So, as transmission is a binary factor with M=0 and A=1, we can report to our
+magazzine:
+
+"Assuming the cars you gave us were picked at random and are representative of
+all the cars in the market, the average manual transmission cars consume from
+21.6 to 27 MPG while the average automatic car consumes from 10.76 to 23.6 MPG"
+
+This implies some cars, regardless of transmission, consume between 21.6 to 23.6
+MPG. This rare cars are:
+
+```{r}
+thecars%>%
+  mutate(row_number=row_number())%>%
+  filter(between(mpg,21.6,23.6))%>%
+  select(row_number,Model,mpg,transmission)
+```
+
+So yes, we can say from this data set "which is better on average, assuming this
+32 cars are representative of the whole car market" and we can quantify it to a
+point (with the exception of this two cars...), but this is not, obviously,
+publication quality material.
+
+For one, variances (from the violin and splom plots) of mpg vs each transmission
+group is anything but similar. Its very possible we cannot trust the p-values or
+confidence interval for inference. Check the diagnostic plots:
+
+```{r fig.height=7,fig.width=6.5}
+lm(mpg~transmission,thecars)%>%
+  autoplot(which=1:6)
+```
+
+You can see the heterosckedacity (I love that word) in scale-location: variances
+differ thus sd of the residuals vs the fitted values show a not-at-all
+horizontal line. It was evident before, but these are the diagnostic plots.
+
+So if we hold other variables constant, that is, if we remove the effect of some
+other variable, we might offer the readers something a bit more interesting.
+
+For example, a clear variable that tells us a lot about a car's performance is
+the horse power. It stands to reason that the more HP, the more we will be
+spending at the gas station. Lets explore HP vs mpg taking into account
+transmission :
+
+```{r fig.width=8}
+thecars%>%
+  ggplot(aes(x=hp,y=mpg,label=Model,color=transmission))+
+  geom_point(aes(x=hp,y=mpg,color=transmission))+
+  ggrepel::geom_text_repel(aes(x=hp,y=mpg,label=Model,color=transmission),max.overlaps = 100)+
+  geom_smooth(method="lm")+
+  facet_wrap(.~transmission)+
+    theme(legend.position="bottom")
+```
+
+This would be an additive model, that is,
+$$MPG(HP,transmission)=\beta_0+\beta_1transmision+\beta_2HP$$ thus for manual
+transmission we would get the line on the left, for auto the one on the right.
+
+And it does look like a pretty good fit especially for automatic transmission,
+but not for the manual cars. This HP vs MPG linear model was explored by the
+teacher in the course. To remind you:
+
+```{r}
+thecars%>%
+  ggplot(aes(x=hp,y=mpg))+
+  geom_point()+
+  ggrepel::geom_text_repel(aes(x=hp,y=mpg,label=Model,color=transmission),max.overlaps = 200)+
+  geom_smooth(method="loess")+
+  
+    theme(legend.position="bottom")
+```
+
+The teacher said: "maybe throw in some quadratic term and it'll be better,
+although that cluster in the center looks ... etc."
+
+So even in this one, with a loess approximation fit, is missing some things. If
+we look at it by transmission, and linear models:
+
+```{r}
+thecars%>%
+  ggplot(aes(x=hp,y=mpg))+
+  geom_point()+
+  ggrepel::geom_text_repel(aes(x=hp,y=mpg,label=Model,color=transmission),max.overlaps = 200)+
+  geom_smooth(method="lm")+
+  facet_wrap(.~transmission)+
+    theme(legend.position="bottom")
+```
+
+We can see in the automatic, HP explains the relationship *well-ish*, save for
+the cluster arround the pontiac firebird and three mercedes. The manuals though,
+look pretty bad. Check them out with loess:
+
+```{r}
+thecars%>%
+  ggplot(aes(x=hp,y=mpg))+
+  geom_point()+
+  ggrepel::geom_text_repel(aes(x=hp,y=mpg,label=Model,color=transmission),max.overlaps = 200)+
+  geom_smooth(method="loess")+
+  facet_wrap(.~transmission)+
+    theme(legend.position="bottom")
+```
+
+Now that is some freaky stuff in the manuals clearly because of the lotus europa
+and, save for the aforementioned cluster in the automatics, it looks well.
+
+Go back to the diagnostic plots and verify that 29, 30 and 31 are the most
+extreme cars row numbers in all meassures. Also go back and see the table output
+from our very first try, where I show the cars that do not comply with the
+assumption that mpg depends solely on transmission, they are 3 and 9. Lets see
+where they lie:
+
+```{r}
+thecars%>%
+  mutate(row_number=row_number(),
+         offender=if_else(row_number %in% c(29,30,31,3,9),
+                          as.character(row_number),
+                          "")
+         )%>%
+  ggplot(aes(x=hp,y=mpg))+
+  geom_point()+
+  ggrepel::geom_text_repel(aes(x=hp,y=mpg,label=offender,color=transmission),max.overlaps = 200)+
+  geom_smooth(method="loess")+
+  facet_wrap(.~transmission)+
+    theme(legend.position="bottom")
+```
+
+All three extremes are manual cars. 3 and 9 have the exact same mpg and one is
+auto and the other is manual.
+
+Ok, so far so bad, right? Lets pause and recognize:
+
+```{r}
+thecars%>%
+  mutate(row_number=row_number(),
+         offender=if_else(row_number %in% c(29,30,31,3,9),
+                          as.character(row_number),
+                          "")
+         )%>%
+  ggplot(aes(x=hp,y=mpg))+
+  geom_point()+
+  ggrepel::geom_text_repel(aes(x=hp,y=mpg,label=paste0(Model,"_",offender),color=transmission),max.overlaps = 200)+
+  geom_smooth(method="loess")+
+  facet_wrap(.~transmission)+
+    theme(legend.position="bottom")
+```
+
+In the manual side, the toyota corola, fiat 128 and fiat X1-9 have almost the
+same HP but quite different MPG. Same goes, although graver, for the Volvo and
+the lotus europa. Then the relationship gets "inverted": the 42E, the Ford
+Pantera, the ferrari dino and the Bora have much, much more horsepower than the
+rest but they dont diminish in MPG too much.
+
+In the automatic side, things look better but for the "cluster" that plagues us.
+Both mercs 450s have almost identical HP but quite less MPG than the Hornet (up
+to confidence interval).
+
+So something is going on and its worse in the manual side. This is why I
+compiled the table of variables: we need to know other variables somewhat
+unrelated to HP, but still related to mpg might explain all those differences.
+
+Perhaps engine design?
+
+```{r}
+thecars%>%
+  mutate(row_number=row_number(),
+         offender=if_else(row_number %in% c(29,30,31,3,9),
+                          as.character(row_number),
+                          "")
+         )%>%
+  ggplot(aes(x=hp,y=mpg))+
+  geom_point()+
+  ggrepel::geom_text_repel(aes(x=hp,y=mpg,label=paste0(Model,"_",offender),color=transmission),max.overlaps = 200)+
+  geom_smooth(method="lm")+
+  facet_wrap(vs~transmission)+
+    theme(legend.position="bottom")
+```
+
+Aha! This gets rid of problems in the manual side but really widens the interval
+for the Straight engine, Manual transmission (upper left) cars. Also, there is
+bound to be variance inflation.
+
+We can see the model now:
+
+```{r}
+lm(mpg~transmission+hp+vs,thecars)%>%
+  tidy(conf.int=TRUE)%>%
+  knitr::kable()
+```
+
+Notice the p-values: vsV, that is, automatic cars with V engine are not a
+significant group. Its closeish, but not there. From the plot, you can see that
+the "clusters" might still be messing things up. In particular, its notorious
+that so many v-shaped engine, automatic cars there have the same HP but very
+different mpg, save for the cadillac and the lincoln.... hum...
+
+Also, three mercs 450 have (almost?) the exact same hp, but very different mpg.
+
+So thinking about this I thought: what about the weight. I mean I remember
+cadillacs and licolns: those were big big cars (mtcars data set comes from the
+70s). So maybe the interaction of hp with weight or...something... but we have
+been warned in the course that interactions are dangerous: we should very well
+prove that use of interaction terms is warranted.
+
+I came up with a nice little measure called the [power-to-weigt
+ratio](https://en.wikipedia.org/wiki/Power-to-weight_ratio). Therein, it is
+said:
+
+> **Power-to-weight ratio** (**PWR**) (also called **specific power**, or
+> **power-to-mass ratio**) is a calculation commonly applied to
+> [engines](https://en.wikipedia.org/wiki/Engine "Engine") and mobile power
+> sources to enable the comparison of one unit or design to another.
+> Power-to-weight ratio is a measurement of actual performance of any engine or
+> power source. It is also used as a measurement of performance of a
+> [vehicle](https://en.wikipedia.org/wiki/Vehicle "Vehicle") as a whole, with
+> the [engine's power
+> output](https://en.wikipedia.org/wiki/Engine_power "Engine power") being
+> divided by the weight (or [mass](https://en.wikipedia.org/wiki/Mass)) of the
+> vehicle, to give a metric that is independent of the vehicle's size.
+> Power-to-weight is often quoted by manufacturers at the peak value, but the
+> actual value may vary in use and variations will affect performance.
+>
+> The inverse of power-to-weight, weight-to-power ratio (power loading) is a
+> calculation commonly applied to aircraft, cars, and vehicles in general, to
+> enable the comparison of one vehicle's performance to another. Power-to-weight
+> ratio is equal to thrust per unit mass multiplied by the velocity of any
+> vehicle.
+
+Now this is okay, but im no mechanic. What does "power" mean? Well, [I found
+this other
+resource](https://goodcalculators.com/power-to-weight-ratio-calculator/) and in
+that one:
+
+> It's very easy to calculate a power-to-weight ratio. Simply divide the power
+> output of a vehicle by its weight. For example, if you have a car that weights
+> 2000 pounds and has 250 hp, the PWR will be as follows:
+>
+> 250 / 2000 = 0.125 hp for every pound of car.
+>
+> \
+>
+> <https://goodcalculators.com/power-to-weight-ratio-calculator/>\
+> © 2015-2021 goodcalculators.com
+
+So instead of using an interaction term in the linear model, and because Im a
+newb, ill just calculate a new variable p2w:
+
+```{r}
+thecars<-thecars%>%
+  mutate(p2w=hp/wt,#I converted wt to pounds back at the beginning: yields hp/lb
+         power_loading=1/p2w, #the inverse of power to weight is easyer to think about, the bigger, the heavyer and/or less hp, the smaller, the lighter and/or more powerful
+         power_loading=power_loading-mean(power_loading) #Better if centered
+         ) 
+```
+
+And now we are going to use that instead of hp, disregarding engine design (V or
+S):
+
+```{r}
+thecars%>%
+  mutate(row_number=row_number(),
+         offender=if_else(row_number %in% c(29,30,31,3,9),
+                          as.character(row_number),
+                          "")
+         )%>%
+  ggplot(aes(x=power_loading,y=mpg,color=qsec))+
+  geom_point()+
+  ggrepel::geom_text_repel(aes(label=paste0(Model,"_",offender)),max.overlaps = 200)+
+  geom_smooth(method="lm")+
+  facet_wrap(.~transmission+vs+carb)+
+    theme(legend.position="bottom")
+```
+
+This took care of most clustery thingies and now we are ready to answer the
+questions in a more effective manner
+
+The model becomes:
+
+```{r}
+lm(mpg~transmission+vs+power_loading,thecars)%>%
+  tidy(conf.int=TRUE)%>%
+  knitr::kable()
+```
+
+Still not good that the power loading seems insignifficant. It most certaintly
+is not. But it might also be that we simply have not enough evidence within all
+those groups (transmissionXvs) for us to declare power loading a determining
+factor.
+
+One more grouping variable is the number of carburators. This certaintly would
+be a part of whatever gobbles up gas, depending on engine design and
+transmission. Check the graphic:
+
+```{r}
+thecars%>%
+    mutate(row_number=row_number(),
+           offender=if_else(row_number %in% c(29,30,31,3,9),
+                            as.character(row_number),
+                            "")
+    )%>%
+    ggplot(aes(x=power_loading,y=mpg,color=qsec))+
+    geom_point()+
+    ggrepel::geom_text_repel(aes(label=paste0(Model,"_",offender)),max.overlaps = 200)+
+    geom_smooth(method="lm")+
+    facet_wrap(.~transmission+vs+carb)+
+    theme(legend.position="bottom")
+```
+
+Here you can see that we cant even fit a line for some groups as they identify
+one exact car. In the end what we have is a flimsy group. However, this does
+give us a window to our data:
+
+```{r}
+lm(mpg~transmission+factor(carb)+power_loading,thecars)%>%
+  tidy(conf.int=TRUE)%>%
+  knitr::kable()
+```
+
+So, transmission is relevant, so is power loading, so is carburators at the 4
+and 8 levels. This is enough: its clear to me that if a I knew more about cars I
+could create a grouping of interaction between transmission and carburators to
+declare cars more or less "muscled" or "big", and that would yield real similar
+cars for which to fit lines of power_loading vs mpg, and it would tell us the
+whole story.
+
+## The Answer
+
+But I dont so... im keeping this and asserting to my magazzine bosses:
+
+> The car with average weight to power ratio, manual transmission and 1
+> carburator gives between 25 and 30.6 MPG. The car with the same loading and
+> carburator but on an automatic transmission, spends almost 5 to 10 MPG more.
+>
+> If the car has 4 carburators instead of 1, it spends 2 to 10 MPG more. If it
+> has 8, it can spend from 2 to 18 MPG extra.
+
+## 

@@ -25,30 +25,264 @@ knitr::opts_chunk$set(
 	warning = FALSE,
 	cache = TRUE,
 	fig.width = 4,
-	fig.height = 2
+	fig.height = 4
 )
 library(tidyverse)
 library(DataExplorer)
 library(DT)
 data("mtcars")
 library(GGally)
+library(ggfortify)
+library(magrittr)
+library(broom)
 thecars<-mtcars%>%
     rename(transmission=am)%>%
     mutate(transmission=if_else(transmission==0,"A","M"),
-           transmission=as_factor(transmission))%>%
+           transmission=as_factor(transmission),
+           wt=wt*1000,
+           vs=if_else(vs==0,"V","S"))%>%
   as_tibble(rownames = "Model")
 ggplot2::theme_set(ggthemes::theme_solarized_2())
 ```
 
-# The data
-The editors have been kind enough to send us a wonderful dataset from the latest cars in the known universe (1973-1974), wich will allow us to see, FINALLY, which transmission type is better for our wallet!
+## The questions
 
-You can see it in all its glory bellow:
-```{r carstable}
-thecars%>%head()
+BOSS: Our magazzine is to finally settle the debate once and for all! Alex! Get
+on to work on this list of cars here and answer NOW:
+
+-   "Is an automatic or manual transmission better for MPG"
+-   "Quantify the MPG difference between automatic and manual transmissions"
+
+### Investigation 1
+
+Okay boss. As you know I'm not that much into the intricate measures of our
+cars. My stuff has to do more with the now (70's) booming electronic tech side
+of automotive stuff.
+
+So I took all the data you gave me and did some research in the internet (which
+does not yet exist, but okay). This yielded:
+
++-------+--------------+-------------------------------+-----------------------+
+| Var   | Doc          | Note                          | Source                |
++-------+--------------+-------------------------------+-----------------------+
+| mpg   | Miles/(US)   |                               |                       |
+|       | gallon       |                               |                       |
++-------+--------------+-------------------------------+-----------------------+
+| cyl   | Number of    |                               |                       |
+|       | cylinders    |                               |                       |
++-------+--------------+-------------------------------+-----------------------+
+| disp  | Displacement | How much gas passes through   | \<                    |
+|       | (cu.in.)     | the cylinders                 | <https://www.yourmec> |
+|       |              |                               | ha                    |
+|       |              |                               | nic.com/article/what- |
+|       |              |                               | is-                   |
+|       |              |                               | engine-displacement\> |
++-------+--------------+-------------------------------+-----------------------+
+| hp    | Gross        |                               |                       |
+|       | horsepower   |                               |                       |
++-------+--------------+-------------------------------+-----------------------+
+| drat  | Rear axle    | Motor revs vs. rear axle revs | \<<                   |
+|       | ratio        |                               | https://www.autolist> |
+|       |              |                               | .co                   |
+|       |              |                               | m/guides/axle-ratio\> |
++-------+--------------+-------------------------------+-----------------------+
+| wt    | Weight (1000 |                               |                       |
+|       | lbs)         |                               |                       |
++-------+--------------+-------------------------------+-----------------------+
+| qsec  | 1/4 mile     |                               |                      |
+|       | time         |                               |                       |
++-------+--------------+-------------------------------+-----------------------+
+| vs    | Engine (0 =  | V: classic, can have more     | \<http                |
+|       | V-shaped, 1  | cylinders, Straight: more     | :/                    |
+|       | = straight)  | efficient, normally less      | /www.whyhighend.com/i |
+|       |              | cylinders                     | nli                   |
+|       |              |                               | ne-vs-v-engine.html\> |
++-------+--------------+-------------------------------+-----------------------+
+| am    | Transmission |                               |                       |
+|       | (0 =         |                               |                       |
+|       | automatic, 1 |                               |                       |
+|       | = manual)    |                               |                       |
++-------+--------------+-------------------------------+-----------------------+
+| gear  | Number of    |                               |                       |
+|       | forward      |                               |                       |
+|       | gears        |                               |                       |
++-------+--------------+-------------------------------+-----------------------+
+| carb  | Number of    |                               |                       |
+|       | carburetors  |                               |                      |
++-------+--------------+-------------------------------+-----------------------+
+|       |              |                               |                       |
++-------+--------------+-------------------------------+-----------------------+
+
+An *excruciating* report is included in the appendix as to how and why did I
+arrive at the following conclusions to settle this ages old debate!
+
+### Discussion
+
+ALEX: (after working a bit)
+
+Okay boss, If you want a straight answer to the first and second questions I can
+tell you right now:
+
+-   Manual cars have 21.6 to 27.2 consumption on Average
+
+-   Automatic cars have 10.8 to 23.56 consumption on Average
+
+```{r}
+tidy(lm(mpg~transmission,thecars),conf.int = TRUE)
 ```
 
-Now that is a lot of variables. We need to see how good (or bad), do those correlate with each other.
+So err... um... well for a bunch of cars automatic transmission reduces
+efficiency (less miles per gallon spent), but for some of them it might be
+um...about the same... :D
+
+BOSS: Remind me why do we pay your very expensive salary, Alex? I need MORE than
+that puny attempt at a guess!
+
+ALEX: (sighs) (thinks: back to the mines, then)... Yes, boss...
+
+(after a while)
+
+Okay I GOT IT! The most important thing that can impact MPG in a vehicle cannot
+be transmission on its own! We have different engine designs like V shaped vs.
+straight, that allows for more or less cylinders. We have the weight of
+vehicles, which impact how much gas demand is the motor going to experience. We
+have also the number of cylinders themselves, of course, although that is no
+good indicator by itself (for one, you might have many cylinders, but they
+aren't the same size across vehicles!).
+
+So we need to assume some things before we start, because you want to infer,
+based on this data, if MPG of all cars depends on transmission and by how much.
+
+-   So the first assumption is that the cars in the data are randomly selected.
+
+So if that holds true, then everything else down there is the truth, the whole
+truth and nothing but the truth!
+
+-   The second assumption is that at the very least MPG depends on the
+    transmission type (everybody knows that!, right?) and the engine design
+    (vshaped vs. straight in line).
+
+For the first assumption, you selected the data so only you know if its true.
+But for the second, we can test! But first, lets assume its true. Check it out
+boss:
+
+```{r}
+fit0<-lm(mpg~transmission+vs,thecars)
+    tidy(fit0,conf.int = TRUE)
+```
+
+Ok BOSS!,I know you ain't a numbers guy, so let me translate to English. What
+that is saying is:
+
+"The average miles per galon of a Manual transmission car with a Straight engine
+design is between 25.3 and 29.9 with 95% confidence"
+
+Furthermore:
+
+"Automatic transmission vehicles with a straight engine increase that average by
+between 6.7 and 3.4 miles per gallon with 95% certainty"
+
+If, however, the engine is V-shaped:
+
+"For manual or automatic transmissions, vshaped engine designs present and
+average consumption descent of 9.5 to 4.34 miles per galon when compared to
+straight engines, which makes a lot of sense".
+
+The most efficient car you can buy, IF it is true that MPG depends mostly or
+only on engine shape and transmission, is Manual transmission with V shaped
+engine.
+
+## Appendix
+
+### Modeling transmission as binomial response
+
+I think we can do a bernoulli fit where the transmission is the output binary
+variable and we can see how much does an increase or decrease of mpg influence
+the probability that a car has automatic or manual transmission.
+
+Remember then that, in this model, Manual is coded as 1 and Automatic is coded
+as zero. Additionally, mpg as a covariate must be centered so that we might have
+a chance to interpret the intercept as the probability for the cars with mean
+mpg to have a manual transmission.
+
+```{r}
+# simplefit_binom_centered_mpg<-glm(formula = transmission ~ mpg, family = "binomial", 
+#                                   data = thecars%>%mutate(mpg=mpg-mean(mpg))
+#                                   )
+# tibble(x=thecars$mpg,y=fitted.values(simplefit))%>%
+# ggplot(aes(x=x,y=y))+
+#     geom_line()+
+#     geom_point(data=tibble(mtcars,transmission=thecars$transmission),aes(x=mpg,y=am,color=transmission))
+```
+
+Remember that Y is in the logit scale. We can see that our fitted model captures
+a basic idea: if you increase mpg, the log odds of the cars having a manual
+transmission decreases. We will transform this to the probability scale
+($$p_i=exp(\beta_0+\beta_1)/(1+exp(\beta_0+\beta_1))$$) and remove the points:
+
+```{r}
+# tibble(x=thecars$mpg,y=exp(fitted.values(simplefit)+0.435)/(1+exp(fitted.values(simplefit)+0.435)))%>%
+#     ggplot(aes(x=x,y=y))+
+#     geom_line()
+```
+
+Our model is saying then that for lower miles per gallon, the probability of a
+car having a manual transmission is much higher than for higher miles per
+gallon.
+
+Now we can dance around this all we want, but it means squat if we don't check
+our assumptions and verify:
+
+-   Included coefficients (variables) are significant. For now, only mpg.
+-   We havent excluded relevant coefficients that might change significance of
+    mpg
+
+\#\#Variable selection
+
+Here comes the hard part. The course makes a point of explaining the process of
+variable selection might start
+
+I played around with diagnostic plots, but specially the qq plot cannot mean
+anything relevant because we already assume the data is not normal. Its
+binomial!
+
+So for now lets stay with our simplest model and try to diagnose it:
+
+```{r fig.height=6}
+# autoplot(simplefit_binom_centered_mpg)+
+#   theme(text=element_text(size = 5))
+```
+
+\#\#Scratch
+
+I mean, what if really mpg has nothing to do with the transmission and we are
+missing an effect that is in another variable (and plenty of them have
+correlation to both mpg and transmission type).
+
+From the book: Omitting variables results in bias in the coefficients of
+interest - unless the regressors are uncorrelated with the omitted ones.
+
+And from the SPLOM plot, we can see mpg is correlated well... with every single
+one of the variables!
+
+### Excrutiating Explorations
+
+## The data
+
+The editors have been kind enough to send us a wonderful dataset from the latest
+cars in the known universe (1973-1974), wich will allow us to see, FINALLY,
+which transmission type is better for our wallet!
+
+You can see it in all its glory bellow:
+
+```{r carstable}
+thecars%>%select(mpg,transmission,everything())%>%head()
+```
+
+Now that is a lot of variables. We need to see how good (or bad), do those
+correlate with each other. A pairs plot is in order as it will guide all of our
+work here.
+
 ```{r pairwise, echo=FALSE, fig.height=6, fig.width=8}
 
 ggpairs(data = thecars%>%select(-Model),
@@ -59,69 +293,269 @@ ggpairs(data = thecars%>%select(-Model),
   theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 0))
 ```
 
-So there we can see a lot of correlated variables. So, what might be interesting here? For one, most of the variable exhibit some sort of correlation, ranging from weak to strong, to Miles per Gallon.
+So there we can see a lot of correlated variables. So, what might be interesting
+here? For one, most of the variable exhibit some sort of correlation, ranging
+from weak to strong, to Miles per Gallon.
 
-In modeling, lets consider what it is we want to answer. One way would be to attempt
-to use mpg as the output variables and see if transmission type changes the average
-mpg value. That is the easy way. But I am no man for easy ways...
+In modeling, lets consider what it is we want to answer. One way would be to
+attempt to use mpg as the output variables and see if transmission type changes
+the average mpg value. It is stated in the problem page: "You work for Motor
+Trend, a magazine about the automobile industry. Looking at a data set of a
+collection of cars, they are interested in exploring the relationship between a
+set of variables and miles per gallon (MPG) (***outcome***)"
 
-I think we can do a bernoulli fit where the transmission is the output binary variable
-and we can see how much does an increase or decrease of mpg influence the probability
-that a car has automatic or manual transmission. 
+So we begin by exploring...
 
-Remember then that, in this model, Manual is coded as 1 and Automatic is coded as zero.
-Additionally, mpg as a covariate must be centered so that we might have a chance to interpret the intercept as the probability for the cars with mean mpg to have a manual transmission.
-
-```{r}
-simplefit_binom_centered_mpg<-glm(formula = transmission ~ mpg, family = "binomial", 
-                                  data = thecars%>%mutate(mpg=mpg-mean(mpg))
-                                  )
-tibble(x=thecars$mpg,y=fitted.values(simplefit))%>%
-ggplot(aes(x=x,y=y))+
-    geom_line()+
-    geom_point(data=tibble(mtcars,transmission=thecars$transmission),aes(x=mpg,y=am,color=transmission))
-```
-Remember that Y is in the logit scale. We can see that our fitted model captures
-a basic idea: if you increase mpg, the log odds of the cars having a manual transmission
-decreases. We will transform this to the probability scale ($$p_i=exp(\beta_0+\beta_1)/(1+exp(\beta_0+\beta_1))$$) and remove the points:
+FINAL:
 
 ```{r}
-tibble(x=thecars$mpg,y=exp(fitted.values(simplefit)+0.435)/(1+exp(fitted.values(simplefit)+0.435)))%>%
-    ggplot(aes(x=x,y=y))+
-    geom_line()
-```
-Our model is saying then that for lower miles per gallon, the probability of a car
-having a manual transmission is much higher than for higher miles per gallon.
-
-Now we can dance around this all we want, but it means squat if we dont check our
-assumptions and verify:
-
-- Included coefficients (variables) are significant. For now, only mpg.
-- We havent excluded relevant coefficients that might change signifficance of mpg
-
-I mean, what if really mpg has nothing to do with the transmission and we are missing 
-an effect that is in another variable (and plenty of them have correlation to both mpg and transmission type). 
-
-From the book: Omitting variables results in bias in the coefficients of interest - unless the regressors are uncorrelated with the omitted ones.
-
-
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+lm(mpg~factor(vs)+transmission+wt+disp,thecars)%>%autoplot(which=1:6)
 ```
 
-## Including Plots
+### Linear modeling of mpg as a function of transmission
 
-You can also embed plots, for example:
+So lets explore first the simplest model and build up from there. The basic
+check can be seen in the above SPLOM plot, but lets zoom in the mpg vs.
+transmission relationship:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r simplest_exploration}
+means<-thecars%>%
+  group_by(transmission)%>%
+  summarize(mean_mpg=mean(mpg))
+mean_of_manual<-means[means$transmission=="M",]$mean_mpg
+mean_of_automatic<-means[means$transmission=="A",]$mean_mpg
+thecars%>%
+  ggplot(aes(x=transmission,y=mpg))+
+  geom_point(aes(color=transmission))+
+  geom_text(data=means,
+            aes(x=transmission,y=mean_mpg,color=transmission,
+                label=round(mean_mpg,3)),
+            nudge_x = -0.2,
+            nudge_y = 0.5,
+            show.legend = FALSE)+
+  geom_hline(data=means,
+             aes(yintercept=mean_mpg,color=transmission),
+            show.legend = FALSE)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Welp. It is clear that Automatic cars have a mean mpg less than the Manual
+transmission cars. But are we sure? Like, statistically "sure"? Most certaintly
+not. Lets keep exploring this relationship by modeling:
+$$MPG=B_0+B_1(transmission); transmission=M:1|A:0$$. Remember then, Manual is 1,
+the level of refference and Automatic is 0, the "other" level.
+
+```{r}
+fit0<-lm(mpg~transmission,data=thecars)
+summary(fit0)
+confint(fit0)
+```
+
+Okay then. So for this data, if it is the case that all the requirements for
+inference are met, we have pretty good significance for the mean mpg given
+manual or automatic transmissions. However (there is always one of those), that
+is one big **IF**.
+
+Lets diagnose this model and check for the LINE[^1] assumptions:
+
+[^1]: Got it from this EXCELENT resource:
+    <https://moderndive.com/10-inference-for-regression.html>
+
+1.  **L**inearity of relationship between variables
+
+2.  **I**ndependence of the residuals
+
+3.  **N**ormality of the residuals
+
+4.  **E**quality of variance of the residuals
+
+Each of those can be assessed by diagnostic plots. Now you may or may not know
+this, but the **ggfortify** package can do that and more for us, as it brings
+with it cool "autoplot" functions that output ggplot2 plots for diagnosing
+models, much like the base R plot().
+
+```{r simplest_diagnostics, fig.width=6,fig.height=6}
+autoplot(fit0, which=1:6,label.repel=TRUE)
+```
+
+So lets evaluate, reminding that the Automatic group comes first, because it
+gets coded as 0:
+
+-   **L**inearity of relationship between variables:
+
+They do seem linear. That is, transmission is binary and the mean within groups
+show a linear relationship with mpg.
+
+-   **I**ndependence of the residuals
+
+They are independent due to the way the data is given to us: no car has a
+particular relationship with another (except maybe they pay to appear in the
+magazzine). We can assume this.
+
+-   **N**ormality of the residuals
+
+The QQ plot shows normality
+
+-   **E**quality of variance of the residuals
+
+The scale-location plot is our friend here and it is saying: no, friend,
+variance between the two groups is NOT the same. You need to werk!
+
+And werk we shall...
+
+### Getting rid of heteroskedacity
+
+So there must be some variable that accounts for that variance difference. That
+is, removing its effect from the outcome should yield equal variance between the
+two groups, so that we might get a precise estimate for the difference in means
+per transmission, keeping other variables under control.
+
+Moreover, the scale location plot and the cooks distance vs leverage plot
+highlight the worst three offenders. Just to keep ourselves in check, lets look
+at them:
+
+```{r fig.width=6}
+thecars[c(20,31,29),]
+```
+
+So okay. So far so good. These three are some "special" cars in this dataset,
+but its not like we see an evident encoding error in mpg so all this leaves us
+is to think about what other variables might impact mpg that we aren't taking
+into account with just the transmission.
+
+Look back at the SPLOM plot. You see it shows correlations within groups M and
+A. We might be looking for a variable that correlates strongly mpg in the manual
+group, but not as much in the Automatic group.
+
+One of them is weight, which is in units "1000lbs". It shows -0.909 correlation
+with mpg within Manual, but -0.768 within Automatic. Now its not like im just
+hunting. It does make a lot of sense that heavier cars would have lesser mpg
+regardless of transmission type.
+
+So lets try another model with this variable included:
+
+```{r}
+fit1<-update(fit0, mpg~transmission+wt)
+summary(fit1)
+confint(fit1)
+```
+
+Huh. Will you look at that? This knocked the A group's significance quite a bit
+but the intercept, which is for manual cars, remains signifficant.
+
+To put it in human, if this is OKAY, then: "For manual transmission cars, per
+each ton of weight, average mpg goes down by 7 miles per gallon. For automatic
+transmissions, we really dont really, really know whats up".
+
+Which is kind of anti-climatic and I do like working for a magazzine in the
+70's. So we gotta werk MOAR. And MOAR we shall Werk.
+
+Maybe we can look at the anova:
+
+```{r}
+anova(fit0,fit1)
+```
+
+Anova does love this new variable here.
+
+Lets diagnose this new model:
+
+```{r fig.width=8,fig.height=8}
+autoplot(fit1,which=1:6)
+```
+
+Inclussion of weight really throws things off. We now have a good scale-location
+plot, which means (i think) weight did correct the difference in variances, but
+the fitted vs. residuals show a clear curve. This is not nice.
+
+So what cars are those in the extremes?
+
+```{r}
+thecars[c(17,18,20),]%>%
+  select(Model, mpg,transmission,wt,everything())
+```
+
+Okay. Well not much there. Now, what other variable might impact mpg? Well if
+weight is taken into account and transmission is taken as well, perhaps the
+cylinders? I mean, regardless of weight or keeping weight and transmission
+constant, more cylinders mean more gas. So, lets do it for that:
+
+```{r}
+fit2<-update(fit1,mpg~transmission+wt+factor(cyl))
+summary(fit2)
+confint(fit2)
+```
+
+Sheesh. Everything is signifficant except having an automatic transmission!
+grrr. Anova this:
+
+```{r}
+anova(fit0,fit1,fit2)
+```
+
+This thing likes the cylinders. Maaan... :/.
+
+So cylinders, weight and having a manual transmission are really strong
+indicators for the average mpg of car car in this dataset.
+
+Lets diagnose this:
+
+```{r}
+autoplot(fit2,which=1:6)
+```
+
+Ok so it looks good but its not really what my boss is going to want to publish.
+So I did a bit of investigative reporting and found [this
+definition](https://www.autolist.com/guides/axle-ratio) for the Rear
+Differential Axle Ratio which is recorded for each vehicle in the **drat**
+variable:
+
+> "A vehicle's axle ratio is the number of revolutions its driveshaft must make
+> to produce one rotation of the axle. Unlike in karts, where wheels connected
+> by an axle must rotate at the same speed, most modern vehicles have elaborate
+> gear trains on their rear axle to allow the wheels to rotate at different
+> rates so they can maintain traction while they turn. The axle ratio for most
+> trucks is between 3 and 4, meaning it takes three to four turns of the
+> driveshaft to turn the axle once. That is why the ratio is often expressed as
+> a number over one, such as 4.10:1...
+>
+> ...A truck's axle ratio tells you how much torque and towing capacity it can
+> produce, and it's an essential indicator of the vehicle's fuel economy. **"**
+
+Okay then. So drat might be one of those "proxy" variables for overall
+efficiency of design, since it tells us how fast a motor has to work per
+revolution of the rear axle... err... or not...
+
+The first thing here is that its a measure of "strength". That is, how much
+power can your car really deliver in its rear axle. As such, it seems to be a
+measure of importance more for big cars than for smaller cars. Lets just look at
+it by transmission type and also lets look at the car models. Maybe thats what
+we aint modeling: if the vehicle is a truck, its mpg will be different from just
+a car, regardless of cylinders or transmission, although weight would be another
+indicator.
+
+Lets explore this:
+
+```{r}
+mpg_vs_drat<-thecars%>%
+  ggplot(aes(y=mpg,x=drat,color=wt))+
+  geom_point()+
+  geom_smooth()
+drat_vs_weight<-thecars%>%
+  ggplot(aes(y=drat,x=wt,color=mpg))+
+  geom_point()+
+  geom_smooth()
+gridExtra::grid.arrange(mpg_vs_drat,drat_vs_weight)%>%print()
+```
+
+Aha! So the more miles per gallon, the more drat, the more drat, the less
+weight. Lets see if this helps:
+
+```{r}
+fit3<-update(fit2,mpg ~ transmission + wt + factor(cyl)+drat)
+summary(fit3)
+confint(fit3)
+anova(fit0,fit1,fit2,fit3)
+```
+
+Now looking back at the correlations in the SPLOM, we can see that drat is the
+least correlated variable to mpg in any and all groups.
